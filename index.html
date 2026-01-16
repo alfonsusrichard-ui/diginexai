@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DigiChat AI - Beta Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Animations */
+        @keyframes messageSlide {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .message-enter { animation: messageSlide 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 0.2; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+        .typing-dot { animation: pulse-dot 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        /* Markdown Styles within Chat */
+        .prose p { margin-bottom: 0.75em; line-height: 1.6; }
+        .prose ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.75em; }
+        .prose ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.75em; }
+        .prose code { background-color: rgba(255,255,255,0.1); color: #e2e8f0; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+        .prose pre { background-color: #1e293b; padding: 1em; border-radius: 8px; overflow-x: auto; margin-top: 0.5em; margin-bottom: 0.5em; border: 1px solid #334155; }
+        .prose pre code { background-color: transparent; padding: 0; color: #cbd5e1; }
+        .prose strong { color: #f8fafc; font-weight: 600; }
+        .prose a { color: #818cf8; text-decoration: underline; }
+        .prose h1, .prose h2, .prose h3 { color: #f1f5f9; font-weight: 700; margin-top: 1em; margin-bottom: 0.5em; }
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+<body class="text-slate-200 h-screen flex overflow-hidden selection:bg-indigo-500 selection:text-white">
+
+    <!-- API KEY MODAL (Hanya muncul jika benar-benar kosong) -->
+    <div id="apikey-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-slate-800/90 border border-slate-700 p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4 relative overflow-hidden ring-1 ring-white/10">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold text-white mb-2">Setup API Key</h3>
+                <p class="text-slate-400 text-sm">Masukkan Key Google AI Studio.</p>
+            </div>
+            <div class="space-y-4">
+                <input type="password" id="input-apikey" placeholder="AIzaSy..." class="w-full bg-slate-900/50 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 text-sm">
+                <button onclick="saveApiKey()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3.5 rounded-xl transition-all">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL (BARU) -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 relative ring-1 ring-white/10">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
+                <h3 class="text-lg font-bold text-white"><i class="fas fa-cog text-indigo-400 mr-2"></i> Pengaturan</h3>
+                <button onclick="toggleSettings()" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="space-y-3">
+                <button onclick="exportChat()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 px-4 rounded-xl flex items-center justify-between group transition-all">
+                    <span class="text-sm font-medium">Export Chat (.txt)</span>
+                    <i class="fas fa-download text-slate-500 group-hover:text-indigo-400"></i>
+                </button>
+                
+                <button onclick="resetChat(); toggleSettings()" class="w-full bg-slate-800 hover:bg-red-900/30 text-slate-200 hover:text-red-400 py-3 px-4 rounded-xl flex items-center justify-between group transition-all">
+                    <span class="text-sm font-medium">Hapus Riwayat Chat</span>
+                    <i class="fas fa-trash-alt text-slate-500 group-hover:text-red-400"></i>
+                </button>
+            </div>
+
+            <div class="mt-6 text-center">
+                <p class="text-[10px] text-slate-600">DigiChat v1.0 Beta Local</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col h-full absolute md:relative z-30 transition-transform duration-300 transform -translate-x-full md:translate-x-0 shadow-2xl md:shadow-none">
+        <!-- Header Sidebar -->
+        <div class="p-6">
+            <!-- UPDATED: Added justify-between and Close Button -->
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                        <i class="fas fa-bolt text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-white text-lg tracking-tight leading-none">DigiChat</h1>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <span class="text-xs text-slate-400 font-medium">AI Assistant</span>
+                            <span class="text-[9px] font-bold bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-500/20 tracking-wider">BETA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- TOMBOL TUTUP MENU (Mobile Only) -->
+                <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+
+            <button onclick="resetChat(); if(window.innerWidth < 768) toggleSidebar();" class="w-full bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 hover:text-indigo-300 border border-indigo-500/20 rounded-xl py-3 px-4 flex items-center justify-center gap-2 transition-all group">
+                <i class="fas fa-plus transition-transform group-hover:rotate-90"></i>
+                <span class="font-medium text-sm">Percakapan Baru</span>
+            </button>
+        </div>
+
+        <div class="flex-1"></div>
+
+        <div class="px-6 py-4">
+            <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                <h4 class="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Info</h4>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Chat bersifat sementara. Refresh halaman akan mereset percakapan.
+                </p>
+            </div>
+        </div>
+        
+        <!-- User Footer (UPDATED: Logout replaced with Settings) -->
+        <div class="p-4 bg-slate-950/30 border-t border-slate-800/50">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center border border-slate-600">
+                        <i class="fas fa-user text-slate-400 text-xs"></i>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-sm font-medium text-slate-200">User</span>
+                        <span class="text-[10px] text-green-500 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Online
+                        </span>
+                    </div>
+                </div>
+                <!-- Tombol Settings -->
+                <button onclick="toggleSettings()" class="text-slate-500 hover:text-indigo-400 bg-transparent hover:bg-slate-800 p-2 rounded-lg transition-all" title="Pengaturan">
+                    <i class="fas fa-cog text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- OVERLAY MOBILE -->
+    <div id="overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-20 hidden md:hidden transition-opacity"></div>
+
+    <!-- MAIN CHAT AREA -->
+    <main class="flex-1 flex flex-col h-full bg-[#0b1121] relative w-full">
+        
+        <!-- Navbar Header Mobile/Desktop -->
+        <header class="h-16 flex items-center justify-between px-6 border-b border-slate-800 glass absolute top-0 w-full z-10">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="md:hidden text-slate-300 hover:text-white transition">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                <div class="flex flex-col md:hidden">
+                    <span class="font-bold text-white text-sm">DigiChat AI</span>
+                    <span class="text-[10px] text-yellow-500">BETA VER</span>
+                </div>
+                <div class="hidden md:flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <span class="text-sm text-slate-400 font-medium">Powered By Gemini 2.5 Flash</span>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                 <button onclick="summarizeChat()" id="btn-summarize" class="hidden md:flex px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-lg text-xs font-medium items-center gap-2 transition-all">
+                    <i class="fas fa-magic text-indigo-400"></i> Ringkas Chat
+                </button>
+            </div>
+        </header>
+
+        <!-- Chat Container -->
+        <div id="chat-container" class="flex-1 overflow-y-auto pt-24 pb-4 px-4 md:px-20 lg:px-48 space-y-6 scroll-smooth">
+            <!-- Welcome Message -->
+            <div class="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6 opacity-100 transition-opacity duration-500" id="welcome-screen">
+                <div class="relative">
+                    <div class="w-20 h-20 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-indigo-600/20 rotate-3 transform hover:rotate-6 transition-transform duration-300">
+                        <i class="fas fa-robot text-3xl text-white"></i>
+                    </div>
+                    <div class="absolute -top-2 -right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-[#0b1121]">BETA</div>
+                </div>
+                <div class="space-y-2">
+                    <h2 class="text-2xl md:text-3xl font-bold text-white">Ada yang bisa saya bantu?</h2>
+                    <p class="text-slate-400 text-sm max-w-md mx-auto">Tanyakan apa saja, mulai dari koding, penulisan kreatif, hingga analisis data.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-lg">
+                    <button onclick="quickAsk('Jelaskan konsep Quantum Computing secara sederhana')" class="text-left p-3 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-indigo-500/50 transition-all group">
+                        <span class="text-xs text-slate-400 group-hover:text-indigo-300">Sains</span>
+                        <p class="text-sm text-slate-200 mt-1">Jelaskan Quantum Computing</p>
+                    </button>
+                    <button onclick="quickAsk('Buatkan kerangka artikel blog tentang AI masa depan')" class="text-left p-3 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-indigo-500/50 transition-all group">
+                        <span class="text-xs text-slate-400 group-hover:text-indigo-300">Kreatif</span>
+                        <p class="text-sm text-slate-200 mt-1">Ide artikel blog AI</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-4 md:pb-6 md:px-20 lg:px-48 relative z-20">
+            <div class="glass rounded-2xl p-2 shadow-2xl ring-1 ring-white/10 relative transition-all focus-within:ring-indigo-500/50 focus-within:shadow-indigo-500/10">
+                <div class="flex items-end gap-2">
+                    <button class="p-3 text-slate-400 hover:text-indigo-400 transition-colors rounded-xl hover:bg-slate-700/50 hidden md:block">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <textarea id="message-input" rows="1" placeholder="Ketik pesan Anda di sini..." class="w-full bg-transparent text-slate-200 text-sm focus:outline-none resize-none py-3 px-2 max-h-32 leading-relaxed placeholder-slate-500" oninput="autoResize(this)"></textarea>
+                    <button onclick="sendMessage()" id="send-btn" class="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg transition-all transform active:scale-90 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed w-11 h-11 shrink-0">
+                        <i class="fas fa-paper-plane text-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="text-center mt-3">
+                <p class="text-[10px] text-slate-600"></p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- LOGIC API KEY & CORE ---
+        // API Key Hardcoded (Sesuai permintaan)
+        const defaultKey = "AIzaSyAPQcslOlfJN8dRzMDAV0imKPtHdXjYr2c";
+        let apiKey = localStorage.getItem("gemini_api_key") || defaultKey;
+        let conversationHistory = [];
+
+        window.onload = function() {
+            if (apiKey && apiKey.startsWith("AIza")) {
+               localStorage.setItem("gemini_api_key", apiKey);
+               console.log("API Key loaded.");
+            } else {
+                document.getElementById('apikey-modal').classList.remove('hidden');
+            }
+        };
+
+        function saveApiKey() {
+            const input = document.getElementById('input-apikey').value.trim();
+            if (input && input.startsWith("AIza")) {
+                apiKey = input;
+                localStorage.setItem("gemini_api_key", apiKey);
+                document.getElementById('apikey-modal').classList.add('hidden');
+            } else {
+                alert("API Key tidak valid.");
+            }
+        }
+
+        // Toggle Sidebar & Overlay
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+
+        // Toggle Settings Modal
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // Fitur Export Chat (Utility Baru)
+        function exportChat() {
+            if (conversationHistory.length === 0) return alert("Belum ada percakapan untuk disimpan.");
+            
+            const chatText = conversationHistory.map(item => {
+                const speaker = item.role === 'user' ? 'User' : 'DigiChat AI';
+                return `[${speaker}]:\n${item.parts[0].text}\n-------------------`;
+            }).join('\n\n');
+
+            const blob = new Blob([chatText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `DigiChat-History-${new Date().toLocaleDateString()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            toggleSettings(); // Tutup modal setelah download
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+
+        function resetChat() {
+            document.getElementById('chat-container').innerHTML = '';
+            // Re-inject welcome screen
+            const welcomeHTML = `
+            <div class="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6 opacity-100 message-enter" id="welcome-screen">
+                <div class="relative">
+                    <div class="w-20 h-20 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-indigo-600/20">
+                        <i class="fas fa-robot text-3xl text-white"></i>
+                    </div>
+                    <div class="absolute -top-2 -right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-[#0b1121]">BETA</div>
+                </div>
+                <div class="space-y-2">
+                    <h2 class="text-2xl md:text-3xl font-bold text-white">Sesi Baru Dimulai</h2>
+                    <p class="text-slate-400 text-sm">Riwayat sebelumnya telah dihapus dari memori.</p>
+                </div>
+            </div>`;
+            document.getElementById('chat-container').innerHTML = welcomeHTML;
+            conversationHistory = [];
+        }
+
+        function quickAsk(text) {
+            const input = document.getElementById('message-input');
+            input.value = text;
+            sendMessage();
+        }
+
+        async function callGeminiChat(newPrompt) {
+            if (!apiKey) {
+                document.getElementById('apikey-modal').classList.remove('hidden');
+                return "Kunci API diperlukan.";
+            }
+
+            const welcome = document.getElementById('welcome-screen');
+            if(welcome) welcome.style.display = 'none';
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            conversationHistory.push({ role: "user", parts: [{ text: newPrompt }] });
+
+            const payload = { contents: conversationHistory };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    let errorMessage = "Gagal menghubungi server.";
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error?.message || `HTTP Error: ${response.status}`;
+                    } catch (e) {
+                        errorMessage = `HTTP Error: ${response.status}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                const data = await response.json();
+                const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, saya tidak mengerti.";
+                
+                conversationHistory.push({ role: "model", parts: [{ text: textResponse }] });
+                return textResponse;
+            } catch (error) {
+                console.error("Gemini Error:", error);
+                return `**Terjadi Kesalahan:** ${error.message}\n\n*Tips: Periksa koneksi internet atau ketersediaan model.*`;
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const sendBtn = document.getElementById('send-btn');
+            const messageText = input.value.trim();
+            const container = document.getElementById('chat-container');
+
+            if (!messageText) return;
+
+            const welcome = document.getElementById('welcome-screen');
+            if(welcome) welcome.style.display = 'none';
+
+            // 1. Render User Message
+            const userHTML = `
+            <div class="flex items-end gap-3 justify-end message-enter mb-6">
+                <div class="max-w-[85%] md:max-w-[70%] text-right">
+                    <div class="bg-indigo-600 text-white px-5 py-3.5 rounded-2xl rounded-br-none shadow-lg shadow-indigo-900/20 inline-block text-left">
+                        <p class="text-sm leading-relaxed text-white">${escapeHtml(messageText).replace(/\n/g, '<br>')}</p>
+                    </div>
+                </div>
+                <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center shrink-0 border border-slate-600">
+                    <i class="fas fa-user text-xs text-slate-300"></i>
+                </div>
+            </div>`;
+            container.insertAdjacentHTML('beforeend', userHTML);
+            container.scrollTop = container.scrollHeight;
+
+            input.value = '';
+            input.style.height = 'auto';
+            input.disabled = true;
+            sendBtn.disabled = true;
+
+            // 2. Render Loading
+            const loadingID = 'loading-' + Date.now();
+            const loadingHTML = `
+            <div id="${loadingID}" class="flex items-start gap-4 message-enter mb-6">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20 mt-1">
+                    <i class="fas fa-bolt text-white text-xs"></i>
+                </div>
+                <div class="bg-slate-800/80 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm border border-slate-700/50">
+                    <div class="flex gap-1.5 items-center h-5">
+                        <div class="w-2 h-2 bg-indigo-400 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-purple-400 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-pink-400 rounded-full typing-dot"></div>
+                    </div>
+                </div>
+            </div>`;
+            container.insertAdjacentHTML('beforeend', loadingHTML);
+            container.scrollTop = container.scrollHeight;
+
+            // 3. Call API
+            const aiResponse = await callGeminiChat(messageText);
+
+            // 4. Remove Loading & Render Response
+            document.getElementById(loadingID).remove();
+            
+            const aiHTML = `
+            <div class="flex items-start gap-4 message-enter mb-6 group">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20 mt-1">
+                    <i class="fas fa-bolt text-white text-xs"></i>
+                </div>
+                <div class="flex-1 max-w-3xl">
+                    <div class="text-xs text-indigo-400 font-bold mb-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">DIGICHAT AI</div>
+                    <div class="text-slate-200 text-sm prose prose-invert max-w-none">
+                        ${marked.parse(aiResponse)}
+                    </div>
+                    <div class="flex gap-3 mt-2 ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <button onclick="copyToClipboard(this)" class="text-[10px] text-slate-500 hover:text-white flex items-center gap-1 transition">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+
+            container.insertAdjacentHTML('beforeend', aiHTML);
+            container.scrollTop = container.scrollHeight;
+
+            input.disabled = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+
+        async function summarizeChat() {
+            if(conversationHistory.length < 2) return alert("Belum ada percakapan untuk diringkas.");
+            
+            const btn = document.getElementById('btn-summarize');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Proses...';
+            
+            const fullText = conversationHistory.map(e => `${e.role}: ${e.parts[0].text}`).join('\n');
+            const prompt = `Buat ringkasan poin-poin singkat dari percakapan berikut dalam bahasa Indonesia:\n${fullText}`;
+            
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data = await res.json();
+                const summary = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                const container = document.getElementById('chat-container');
+                const summaryHTML = `
+                <div class="flex justify-center my-6 message-enter">
+                    <div class="bg-slate-800/60 border border-yellow-500/30 p-5 rounded-xl max-w-2xl w-full backdrop-blur-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div>
+                        <div class="flex items-center gap-2 mb-3 text-yellow-500 font-bold text-sm uppercase tracking-wider">
+                            <i class="fas fa-file-alt"></i> Ringkasan Percakapan
+                        </div>
+                        <div class="prose prose-sm prose-invert text-slate-300">${marked.parse(summary)}</div>
+                    </div>
+                </div>`;
+                container.insertAdjacentHTML('beforeend', summaryHTML);
+                container.scrollTop = container.scrollHeight;
+            } catch(e) { console.error(e); }
+            
+            btn.innerHTML = originalHTML;
+        }
+
+        function copyToClipboard(btn) {
+            const text = btn.parentElement.previousElementSibling.innerText;
+            navigator.clipboard.writeText(text);
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check text-green-400"></i> Copied';
+            setTimeout(() => btn.innerHTML = originalIcon, 2000);
+        }
+
+        document.getElementById('message-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        });
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
